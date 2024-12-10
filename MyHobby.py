@@ -10,6 +10,7 @@ import logging
 import json
 import os
 
+# bot @MyHobbyMy_Bot
 
 if os.path.exists("bot.log"):
     os.remove("bot.log")
