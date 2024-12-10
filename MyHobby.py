@@ -6,6 +6,20 @@ import matplotlib.pyplot as plt
 import io
 import matplotlib
 matplotlib.use('Agg')
+import logging
+import json
+import os
+
+
+if os.path.exists("bot.log"):
+    os.remove("bot.log")
+
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                    handlers=[logging.FileHandler("bot.log"),
+                              logging.StreamHandler()])
+
+logger = logging.getLogger(__name__)
 
 
 def get_hours_declension(hours):
@@ -17,7 +31,7 @@ def get_hours_declension(hours):
         return f"{hours} часов"
 
 
-class BotMyHobby:
+class BotMyHobby():
     def __init__(self, token):
         self.bot = telebot.TeleBot(token)
         self.user_states = {}   # словарь для хранения стека состояний пользователей
@@ -31,6 +45,7 @@ class BotMyHobby:
         self.bot.message_handler(func=lambda message: True)(self.handle_message)
 
     def startBot(self, message):
+        logger.info(f"User {message.from_user.first_name} started the bot")
         first_mess = (f'<b>{message.from_user.first_name}</b>, привет!\nЭто бот для хобби! Чтобы помочь тебе найти что-то, '
                       f'мне нужно знать, чем ты увлекаешься :)')
         markup = types.InlineKeyboardMarkup()
@@ -45,7 +60,6 @@ class BotMyHobby:
             chat_id = function_call.message.chat.id
             if chat_id not in self.user_states:
                 self.user_states[chat_id] = []  # инициализация стека состояний для нового пользователя
-
             if function_call.data == 'guitar':
                 guitar = Guitar(self.bot)
                 guitar.handle_guitar(function_call.message)
@@ -80,7 +94,6 @@ class BotMyHobby:
                 self.guitar_activity_tracker.send_guitar_stats(function_call.message)
             elif function_call.data == 'show_graph':
                 self.guitar_activity_tracker.send_guitar_graph(function_call.message)
-
             try:
                 self.bot.answer_callback_query(function_call.id)
             except telebot.apihelper.ApiTelegramException as e:
@@ -90,20 +103,26 @@ class BotMyHobby:
                     raise e  # поднять другие ошибки
 
     def handle_message(self, message):
+        logger.info(f"Message: {message.text}")
         chat_id = message.chat.id
         if chat_id in self.user_states and self.user_states[chat_id] and self.user_states[chat_id][-1] == 'mark_today':
             try:
                 hours = float(message.text)
                 if 0 < hours <= 24:
-                    self.guitar_activity_tracker.track_activity(chat_id, hours)
-                    self.bot.send_message(chat_id, f"Запись принята: {get_hours_declension(hours)}")
-                    self.user_states[chat_id].pop()  # удаление состояния 'mark_today' из стека
+                    success = self.guitar_activity_tracker.track_activity(chat_id, hours)
+                    if success:
+                        self.bot.send_message(chat_id, f"Запись принята: {get_hours_declension(hours)}")
+                        logger.info(f"Record accepted: {get_hours_declension(hours)}")
+                        self.user_states[chat_id].pop()  # удаление состояния 'mark_today' из стека
+                    else:
+                        self.bot.send_message(chat_id, "Суммарное количество часов за день не может превышать 24 часа.")
                 else:
                     self.bot.send_message(chat_id, "Пожалуйста, введите число часов от 1 до 24")
             except ValueError:
                 self.bot.send_message(chat_id, "Пожалуйста, введите корректное число часов")
 
     def send_stats_menu(self, message):
+        logger.info(f"Stats menu sent")
         markup = types.InlineKeyboardMarkup()
         button_mark_today = types.InlineKeyboardButton(text='Отметить занятие', callback_data='mark_today')
         markup.add(button_mark_today)
@@ -123,15 +142,50 @@ class GuitarActivityTracker:
     def __init__(self, bot):
         self.bot = bot
         self.guitar_activities = defaultdict(dict)  # словарь для хранения занятий гитарой
+        self.load_data()
+
+    def load_data(self):
+        if os.path.exists('guitar_activities.json'):
+            with open('guitar_activities.json', 'r') as file:
+                try:
+                    data = json.load(file)
+                    if isinstance(data, dict):
+                        for chat_id, activities in data.items():
+                            self.guitar_activities[int(chat_id)] = {datetime.strptime(date, '%Y-%m-%d').date(): hours
+                                                                    for date, hours in activities.items()}
+                    else:
+                        logger.error("Error loading data from guitar_activities.json. File will be overwritten.")
+                        self.guitar_activities = defaultdict(dict)
+                except json.JSONDecodeError:
+                    logger.error("Error loading data from guitar_activities.json. File will be overwritten.")
+                    self.guitar_activities = defaultdict(dict)
+        else:
+            with open('guitar_activities.json', 'w') as file:
+                json.dump({}, file)
+
+    def save_data(self):
+        data = {str(chat_id): {date.strftime('%Y-%m-%d'): hours for date, hours in activities.items()} for
+                chat_id, activities in self.guitar_activities.items()}
+        with open('guitar_activities.json', 'w') as file:
+            json.dump(data, file)
 
     def track_activity(self, chat_id, hours):
+        logger.info(f"Recording activity for user {chat_id}, '{hours}'")
         today = datetime.now().date()
         if today in self.guitar_activities[chat_id]:
+            current_hours = self.guitar_activities[chat_id][today]
+            if current_hours + hours > 24:
+                logger.info(f"Activity not recorded for user {chat_id}: total hours exceed 24")
+                return False
             self.guitar_activities[chat_id][today] += hours
         else:
             self.guitar_activities[chat_id][today] = hours
+        logger.info(f"Updated statistics for user {chat_id}: {self.guitar_activities[chat_id][today]}")
+        self.save_data()
+        return True
 
     def send_guitar_stats(self, message):
+        logger.info(f"Sent statistics for user {message.from_user.first_name}")
         chat_id = message.chat.id
         if chat_id in self.guitar_activities:
             stats_mess = 'Ваша статистика занятий гитарой:\n'
@@ -142,6 +196,7 @@ class GuitarActivityTracker:
         self.bot.send_message(chat_id, stats_mess)
 
     def send_guitar_graph(self, message):
+        logger.info(f"Sent statistics graph for user {message.from_user.first_name}")
         chat_id = message.chat.id
         if chat_id in self.guitar_activities:
             dates, hours = zip(*sorted(self.guitar_activities[chat_id].items()))
@@ -167,6 +222,7 @@ class Guitar:
         self.bot = bot
 
     def handle_guitar(self, message):
+        logger.info(f"Sent 'guitar' menu")
         second_mess = 'Отлично! Хочешь найти какой-нибудь аккорд, бой или песню?'
         markup = types.InlineKeyboardMarkup()
         button_chords = types.InlineKeyboardButton("Аккорды", callback_data='chords')
@@ -180,6 +236,7 @@ class Guitar:
         self.bot.send_message(message.chat.id, second_mess, reply_markup=markup)
 
     def send_chords(self, message):
+        logger.info(f"Sent chords")
         chords_mess = ('На фотографии представлены основные аккорды. С их помощью можно сыграть любую песню, '
                         'а если нужно изменить тональность – используй каподастр '
                         '\nЕсли тебе нужны другие аккорды, нажми на кнопку "Другие аккорды"👇\n'+
@@ -195,10 +252,11 @@ class Guitar:
         markup.add(button_chords_video)
         button_back = types.InlineKeyboardButton("Назад", callback_data='back')
         markup.add(button_back)
-        with open("C:/Users/Nika/PycharmProjects/tgbotHobby/pic/chords.jpg", 'rb') as chords_photo:
+        with open("pic/chords.jpg", 'rb') as chords_photo:
             self.bot.send_photo(message.chat.id, chords_photo, caption=chords_mess, reply_markup=markup)
 
     def send_fights(self, message):
+        logger.info(f"Sent strumming patterns")
         fights_mess = ('На картинке представлены самые популярные бои.'
                         '\nЕсли тебе нужны другие бои, нажми на кнопку "Другие бои"👇'+
                         '\nЕсли ты впервые держишь в руках гитару, и ещё не знаешь, как играть бои, '
@@ -210,7 +268,7 @@ class Guitar:
         markup.add(button_fights_video)
         button_back = types.InlineKeyboardButton("Назад", callback_data='back')
         markup.add(button_back)
-        with open("C:/Users/Nika/PycharmProjects/tgbotHobby/pic/fights.jpg", 'rb') as fights_photo:
+        with open("pic/fights.jpg", 'rb') as fights_photo:
             self.bot.send_photo(message.chat.id, fights_photo, caption=fights_mess, reply_markup=markup)
 
 
