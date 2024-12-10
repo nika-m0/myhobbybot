@@ -32,7 +32,7 @@ def get_hours_declension(hours):
         return f"{hours} часов"
 
 
-class BotMyHobby():
+class BotMyHobby:
     def __init__(self, token):
         self.bot = telebot.TeleBot(token)
         self.user_states = {}   # словарь для хранения стека состояний пользователей
