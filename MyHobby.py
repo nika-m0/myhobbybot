@@ -33,7 +33,7 @@ def get_hours_declension(hours):
         return f"{hours} часов"
 
 
-class HobbyHandler(ABC):
+class HobbyABC(ABC):
     def __init__(self, bot):
         self.bot = bot
 
@@ -46,7 +46,7 @@ class HobbyHandler(ABC):
         pass
 
 
-class Guitar(HobbyHandler):
+class Guitar(HobbyABC):
     def handle_hobby(self, message):
         logger.info(f"Sent 'guitar' menu")
         second_mess = 'Отлично! Хочешь найти какой-нибудь аккорд, бой или песню?'
