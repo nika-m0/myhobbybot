@@ -46,64 +46,6 @@ class HobbyABC(ABC):
         pass
 
 
-class Guitar(HobbyABC):
-    def handle_hobby(self, message):
-        logger.info(f"Sent 'guitar' menu")
-        second_mess = 'Отлично! Хочешь найти какой-нибудь аккорд, бой или песню?'
-        markup = types.InlineKeyboardMarkup()
-        button_chords = types.InlineKeyboardButton("Аккорды", callback_data='chords')
-        markup.add(button_chords)
-        button_fight = types.InlineKeyboardButton("Бои", callback_data='fights')
-        markup.add(button_fight)
-        button_songs = types.InlineKeyboardButton("Песни", url='https://454.amdm.ru/')
-        markup.add(button_songs)
-        button_back = types.InlineKeyboardButton("Назад", callback_data='back')
-        markup.add(button_back)
-        self.bot.send_message(message.chat.id, second_mess, reply_markup=markup)
-
-    def send_resources(self, message):
-        if message.data == 'chords':
-            self.send_chords(message)
-        elif message.data == 'fights':
-            self.send_fights(message)
-
-    def send_chords(self, message):
-        logger.info(f"Sent chords")
-        chords_mess = ('На фотографии представлены основные аккорды. С их помощью можно сыграть любую песню, '
-                        'а если нужно изменить тональность – используй каподастр '
-                        '\nЕсли тебе нужны другие аккорды, нажми на кнопку "Другие аккорды"👇\n'+
-                        '\nЕсли хочешь узнать больше теории про аккорды, нажми на кнопку "Теория"'+
-                        '\nЕсли ты впервые держишь в руках гитару, и ещё не знаешь, как ставить аккорды, '
-                        'нажми на кнопку "Видео"')
-        markup = types.InlineKeyboardMarkup()
-        button_chords_link = types.InlineKeyboardButton('Другие аккорды', url='https://www.5lad.ru/applikatury/')
-        markup.add(button_chords_link)
-        button_chords_theory = types.InlineKeyboardButton('Теория', url='https://musiconshop.ru/vidy-i-tipy-akkordov')
-        markup.add(button_chords_theory)
-        button_chords_video = types.InlineKeyboardButton('Видео', url='https://www.youtube.com/watch?v=VahPPwUc8QI')
-        markup.add(button_chords_video)
-        button_back = types.InlineKeyboardButton("Назад", callback_data='back')
-        markup.add(button_back)
-        with open("pic/chords.jpg", 'rb') as chords_photo:
-            self.bot.send_photo(message.chat.id, chords_photo, caption=chords_mess, reply_markup=markup)
-
-    def send_fights(self, message):
-        logger.info(f"Sent strumming patterns")
-        fights_mess = ('На картинке представлены самые популярные бои.'
-                        '\nЕсли тебе нужны другие бои, нажми на кнопку "Другие бои"👇'+
-                        '\nЕсли ты впервые держишь в руках гитару, и ещё не знаешь, как играть бои, '
-                        'нажми на кнопку "Видео"')
-        markup = types.InlineKeyboardMarkup()
-        button_fights_link = types.InlineKeyboardButton('Другие бои', url='https://pereborom.ru/boj-na-gitare-12-vidov/')
-        markup.add(button_fights_link)
-        button_fights_video = types.InlineKeyboardButton('Видео', url='https://www.youtube.com/watch?v=5QbeJyFHEfk')
-        markup.add(button_fights_video)
-        button_back = types.InlineKeyboardButton("Назад", callback_data='back')
-        markup.add(button_back)
-        with open("pic/fights.jpg", 'rb') as fights_photo:
-            self.bot.send_photo(message.chat.id, fights_photo, caption=fights_mess, reply_markup=markup)
-
-
 class BotMyHobby:
     def __init__(self, token):
         self.bot = telebot.TeleBot(token)
@@ -128,40 +70,40 @@ class BotMyHobby:
         markup.add(button_stats)
         self.bot.send_message(message.chat.id, first_mess, parse_mode='html', reply_markup=markup)
 
-    def handle_callback(self, function_call):
-        if function_call.message:
-            chat_id = function_call.message.chat.id
+    def handle_callback(self, callback_query):
+        if callback_query.message:
+            chat_id = callback_query.message.chat.id
             if chat_id not in self.user_states:
                 self.user_states[chat_id] = []  # инициализация стека состояний для нового пользователя
-            if function_call.data == 'guitar':
+            if callback_query.data == 'guitar':
                 guitar = Guitar(self.bot)
-                guitar.handle_hobby(function_call.message)
+                guitar.handle_hobby(callback_query.message)
                 self.user_states[chat_id].append('guitar')  # добавление состояния в стек
-            elif function_call.data in ['chords', 'fights']:
+            elif callback_query.data in ['chords', 'strums']:
                 guitar = Guitar(self.bot)
-                guitar.send_resources(function_call)
-                self.user_states[chat_id].append(function_call.data)
-            elif function_call.data == 'back':
+                guitar.send_resources(callback_query)
+                self.user_states[chat_id].append(callback_query.data)
+            elif callback_query.data == 'back':
                 if self.user_states[chat_id]:
                     previous_state = self.user_states[chat_id].pop()  # извлечение предыдущего состояния из стека
                     if previous_state == 'guitar':
-                        self.startBot(function_call.message)  # возврат к начальному состоянию
-                    elif previous_state in ['chords', 'fights']:
+                        self.startBot(callback_query.message)  # возврат к начальному состоянию
+                    elif previous_state in ['chords', 'strums']:
                         guitar = Guitar(self.bot)
-                        guitar.handle_hobby(function_call.message)
+                        guitar.handle_hobby(callback_query.message)
                 else:
-                    self.startBot(function_call.message)  # возврат к начальному состоянию, если стек пуст
-            elif function_call.data == 'stats':
-                self.send_stats_menu(function_call.message)
-            elif function_call.data == 'mark_today':
+                    self.startBot(callback_query.message)  # возврат к начальному состоянию, если стек пуст
+            elif callback_query.data == 'stats':
+                self.send_stats_menu(callback_query.message)
+            elif callback_query.data == 'mark_today':
                 self.bot.send_message(chat_id, "Сколько часов ты занимался сегодня? (укажите число)")
                 self.user_states[chat_id].append('mark_today')
-            elif function_call.data == 'show_stats':
-                self.guitar_activity_tracker.send_guitar_stats(function_call.message)
-            elif function_call.data == 'show_graph':
-                self.guitar_activity_tracker.send_guitar_graph(function_call.message)
+            elif callback_query.data == 'show_stats':
+                self.guitar_activity_tracker.send_guitar_stats(callback_query.message)
+            elif callback_query.data == 'show_graph':
+                self.guitar_activity_tracker.send_guitar_graph(callback_query.message)
             try:
-                self.bot.answer_callback_query(function_call.id)
+                self.bot.answer_callback_query(callback_query.id)
             except telebot.apihelper.ApiTelegramException as e:
                 if "query is too old" in str(e):
                     pass  # игнорировать ошибку, если запрос слишком старый
@@ -202,6 +144,65 @@ class BotMyHobby:
 
     def start_polling(self):
         self.bot.infinity_polling()     # бот будет работать пока файл запущен
+
+
+class Guitar(HobbyABC):
+    def handle_hobby(self, message):
+        logger.info(f"Sent 'guitar' menu")
+        second_mess = 'Отлично! Хочешь найти какой-нибудь аккорд, бой или песню?'
+        markup = types.InlineKeyboardMarkup()
+        button_chords = types.InlineKeyboardButton("Аккорды", callback_data='chords')
+        markup.add(button_chords)
+        button_strums = types.InlineKeyboardButton("Бои", callback_data='strums')
+        markup.add(button_strums)
+        button_songs = types.InlineKeyboardButton("Песни", url='https://454.amdm.ru/')
+        markup.add(button_songs)
+        button_back = types.InlineKeyboardButton("Назад", callback_data='back')
+        markup.add(button_back)
+        self.bot.send_message(message.chat.id, second_mess, reply_markup=markup)
+
+    def send_resources(self, callback_query):
+        message = callback_query.message
+        if callback_query.data == 'chords':
+            self.send_chords(message)
+        elif callback_query.data == 'strums':
+            self.send_strums(message)
+
+    def send_chords(self, message):
+        logger.info(f"Sent chords")
+        chords_mess = ('На фотографии представлены основные аккорды. С их помощью можно сыграть любую песню, '
+                        'а если нужно изменить тональность – используй каподастр '
+                        '\nЕсли тебе нужны другие аккорды, нажми на кнопку "Другие аккорды"👇\n'+
+                        '\nЕсли хочешь узнать больше теории про аккорды, нажми на кнопку "Теория"'+
+                        '\nЕсли ты впервые держишь в руках гитару, и ещё не знаешь, как ставить аккорды, '
+                        'нажми на кнопку "Видео"')
+        markup = types.InlineKeyboardMarkup()
+        button_chords_link = types.InlineKeyboardButton('Другие аккорды', url='https://www.5lad.ru/applikatury/')
+        markup.add(button_chords_link)
+        button_chords_theory = types.InlineKeyboardButton('Теория', url='https://musiconshop.ru/vidy-i-tipy-akkordov')
+        markup.add(button_chords_theory)
+        button_chords_video = types.InlineKeyboardButton('Видео', url='https://www.youtube.com/watch?v=VahPPwUc8QI')
+        markup.add(button_chords_video)
+        button_back = types.InlineKeyboardButton("Назад", callback_data='back')
+        markup.add(button_back)
+        with open("pic/chords.jpg", 'rb') as chords_photo:
+            self.bot.send_photo(message.chat.id, chords_photo, caption=chords_mess, reply_markup=markup)
+
+    def send_strums(self, message):
+        logger.info(f"Sent strumming patterns")
+        strums_mess = ('На картинке представлены самые популярные бои.'
+                        '\nЕсли тебе нужны другие бои, нажми на кнопку "Другие бои"👇'+
+                        '\nЕсли ты впервые держишь в руках гитару, и ещё не знаешь, как играть бои, '
+                        'нажми на кнопку "Видео"')
+        markup = types.InlineKeyboardMarkup()
+        button_strums_link = types.InlineKeyboardButton('Другие бои', url='https://pereborom.ru/boj-na-gitare-12-vidov/')
+        markup.add(button_strums_link)
+        button_strums_video = types.InlineKeyboardButton('Видео', url='https://www.youtube.com/watch?v=5QbeJyFHEfk')
+        markup.add(button_strums_video)
+        button_back = types.InlineKeyboardButton("Назад", callback_data='back')
+        markup.add(button_back)
+        with open("pic/strum.jpg", 'rb') as strums_photo:
+            self.bot.send_photo(message.chat.id, strums_photo, caption=strums_mess, reply_markup=markup)
 
 
 class GuitarActivityTracker:
